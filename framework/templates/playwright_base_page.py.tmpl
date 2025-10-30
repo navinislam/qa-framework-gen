@@ -1,0 +1,67 @@
+"""Base abstractions for Playwright-powered page objects."""
+from __future__ import annotations
+
+import os
+from typing import Optional
+
+import allure
+from playwright.sync_api import Locator, Page
+
+
+class PlaywrightBasePage:
+    """Shared helpers for Playwright interactions."""
+
+    def __init__(self, page: Page, base_url: str | None) -> None:
+        self.page = page
+        resolved = base_url or os.getenv("URI") or "https://www.saucedemo.com"
+        self.base_url = resolved.rstrip("/")
+
+    @allure.step("Navigate to {path}")
+    def navigate_to(self, path: str = "") -> None:
+        """Navigate the Playwright page to a relative path."""
+        url = f"{self.base_url}/{path.lstrip('/')}" if path else self.base_url
+        self.page.goto(url)
+
+    @allure.step("Locate element {selector}")
+    def get_element(self, selector: str) -> Locator:
+        """Return a Playwright locator for the given selector."""
+        return self.page.locator(selector)
+
+    @allure.step("Click {selector}")
+    def click(self, selector: str) -> None:
+        """Click an element."""
+        self.get_element(selector).click()
+
+    @allure.step("Fill {selector} with text")
+    def fill(self, selector: str, text: str) -> None:
+        """Fill an input field."""
+        self.get_element(selector).fill(text)
+
+    @allure.step("Read text from {selector}")
+    def get_text(self, selector: str) -> str:
+        """Retrieve text content from a locator."""
+        return self.get_element(selector).text_content() or ""
+
+    @allure.step("Wait for {selector}")
+    def wait_for_selector(
+        self, selector: str, state: str = "visible", timeout: Optional[int] = None
+    ) -> Locator:
+        """Wait for a selector to be in the desired state."""
+        locator = self.get_element(selector)
+        locator.wait_for(state=state, timeout=timeout)
+        return locator
+
+    @allure.step("Capture screenshot: {name}")
+    def take_screenshot(self, name: str = "playwright-screenshot") -> bytes:
+        """Capture and attach a screenshot."""
+        screenshot = self.page.screenshot(full_page=True)
+        allure.attach(screenshot, name=name, attachment_type=allure.attachment_type.PNG)
+        return screenshot
+
+    def is_visible(self, selector: str) -> bool:
+        """Return True if the element is visible."""
+        return self.get_element(selector).is_visible()
+
+    def is_enabled(self, selector: str) -> bool:
+        """Return True if the element is enabled."""
+        return self.get_element(selector).is_enabled()

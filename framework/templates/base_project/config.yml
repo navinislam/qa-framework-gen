@@ -1,0 +1,5 @@
+project:
+  name: "{{PROJECT_NAME}}"
+  base_url: "{{BASE_URL}}"
+  default_browser: chrome
+

@@ -45,8 +45,13 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+tmp
 
 # Distribution
 dist/
 build/
 *.egg-info/
+
+#AI
+CLAUDE.md
+.claude/*

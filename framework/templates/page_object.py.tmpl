@@ -1,0 +1,15 @@
+from __future__ import annotations
+
+from framework import SeleniumBasePage
+
+
+class {{CLASS_NAME}}(SeleniumBasePage):
+    """Page object for {{DISPLAY_NAME}}."""
+
+    def __init__(self, base_factory: SeleniumBasePage, base_url: str | None = None) -> None:
+        super().__init__(base_factory.driver)
+        resolved = base_url or "{{BASE_URL}}"
+        self.base_url = resolved.rstrip("/")
+
+    def visit(self) -> None:
+        self.driver.get(self.base_url)

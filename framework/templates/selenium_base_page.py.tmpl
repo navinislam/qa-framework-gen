@@ -1,0 +1,348 @@
+import os
+import time
+from typing import Any, Callable, Optional
+
+from selenium.webdriver import Keys
+
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from framework.models.locator import Locator, LocatorLike, to_locator_tuple
+from framework.utils.logger import get_logger
+from framework.utils.screenshot import capture_screenshot
+
+
+class BaseFactory(object):
+    def __init__(self, driver):
+        self.driver = driver
+        self.wait_retry_attempts = int(os.getenv("WAITS_RETRY_ATTEMPTS", "3"))
+        self.wait_retry_interval = float(os.getenv("WAITS_RETRY_INTERVAL", "0.5"))
+
+    def open(self, path):
+        self.driver.get(path)
+
+    def get_date_time(self):
+        """Static Method: get_date_time"""
+        timestamp = time.strftime("%m%d%Y%H%M%S")
+        return timestamp
+
+    def _logger(self, name: str) -> Any:
+        return get_logger(f"{self.__class__.__name__}.{name}")
+
+    def _resolve_locator(self, locator: Optional[LocatorLike]):
+        if locator is None:
+            return None
+        return to_locator_tuple(locator)
+
+    def _locator_repr(self, locator: Optional[LocatorLike]) -> Optional[str]:
+        if locator is None:
+            return None
+        if isinstance(locator, Locator):
+            return f"{locator.by}={locator.value}"
+        if isinstance(locator, tuple) and len(locator) == 2:
+            return f"{locator[0]}={locator[1]}"
+        return str(locator)
+
+    def _wait_with_retry(
+        self,
+        action_name: str,
+        locator: Optional[LocatorLike],
+        wait_callable: Callable[[], Any],
+        screenshot_prefix: str,
+        retries: Optional[int] = None,
+    ):
+        attempts = retries if retries is not None else self.wait_retry_attempts
+        logger = self._logger(action_name)
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, attempts + 1):
+            try:
+                result = wait_callable()
+                logger.info(
+                    "Wait succeeded",
+                    locator=self._locator_repr(locator),
+                    attempt=attempt,
+                    retries=attempts,
+                )
+                return result
+            except Exception as error:
+                last_error = error
+                logger.warning(
+                    "Wait attempt failed",
+                    locator=self._locator_repr(locator),
+                    attempt=attempt,
+                    retries=attempts,
+                    error=str(error),
+                )
+                if attempt == attempts:
+                    screenshot_name = f"{screenshot_prefix}_{self.get_date_time()}.png"
+                    screenshot_path = capture_screenshot(self.driver, screenshot_name)
+                    logger.error(
+                        "Exhausted wait retries",
+                        locator=self._locator_repr(locator),
+                        screenshot=str(screenshot_path),
+                    )
+                    raise
+                time.sleep(self.wait_retry_interval)
+        if last_error:
+            raise last_error
+        return None
+
+    def wait_for_element_present(self, locator, timeout=10, retries=None):
+        """Waits for an element to be present in the DOM.
+
+        Args:
+            locator: Locator tuple or Locator object.
+            timeout (int, optional): The timeout period. Defaults to 10.
+
+        Returns:
+            bool: True if the element is found, otherwise an exception is raised.
+        """
+        resolved = self._resolve_locator(locator)
+
+        def wait_callable():
+            WebDriverWait(self.driver, timeout=timeout).until(
+                EC.presence_of_element_located(resolved)
+            )
+            return True
+
+        return self._wait_with_retry(
+            "wait_for_element_present",
+            locator,
+            wait_callable,
+            "element_not_found",
+            retries=retries,
+        )
+
+    def wait_for_element_visible(self, locator, timeout=10, retries=None):
+        resolved = self._resolve_locator(locator)
+
+        def wait_callable():
+            WebDriverWait(self.driver, timeout).until(
+                EC.visibility_of_element_located(resolved)
+            )
+            return True
+
+        return self._wait_with_retry(
+            "wait_for_element_visible",
+            locator,
+            wait_callable,
+            "element_not_visible",
+            retries=retries,
+        )
+
+    def is_element_present(self, locator=None, element=None):
+        """
+        Check if element is present -> MODIFIED
+        Either provide element or a combination of locator and locatorType
+        """
+        elements = []
+
+        logger = self._logger("get_pipeline_info")
+        if locator:  # This means if locator is not empty
+            resolved = self._resolve_locator(locator)
+            elements = self.driver.find_elements(*resolved)
+        elif locator is None and element is not None:
+            elements = [element]
+        if len(elements) > 0:
+            logger.info("Element located", locator=locator, element=element)
+            return True
+        logger.info("Element not present", locator=locator, element=element)
+        return False
+
+    def is_element_displayed(self, locator=None, element=None):
+        """
+        NEW METHOD
+        Check if element is displayed
+        Either provide element or a combination of locator and locatorType
+        """
+        is_displayed = False
+        logger = self._logger("element_is_displayed")
+        try:
+            if locator:  # This means if locator is not empty
+                element = self.driver.find_element(*self._resolve_locator(locator))
+            if element is not None:
+                is_displayed = element.is_displayed()
+                display_target = self._locator_repr(locator) or element
+                logger.info("Element is displayed", element=display_target)
+            else:
+                display_target = self._locator_repr(locator) or element
+                logger.info("Element not displayed", element=display_target)
+            return is_displayed
+        except Exception as error:
+            display_target = self._locator_repr(locator) or element
+            logger.info(
+                "Element not displayed",
+                element=display_target,
+                error=str(error),
+            )
+            return False
+
+    def wait_for_element_clickable(self, locator=None, timeout=10, retries=None):
+        """Waits for element to be clickable"""
+        logger = self._logger("wait for element clickable")
+
+        resolved = self._resolve_locator(locator)
+
+        def wait_callable():
+            logger.info("Waiting for element to be clickable", element=self._locator_repr(locator))
+            WebDriverWait(self.driver, timeout).until(
+                EC.element_to_be_clickable(resolved)
+            )
+            return True
+
+        return self._wait_with_retry(
+            "wait_for_element_clickable",
+            locator,
+            wait_callable,
+            "element_not_clickable",
+            retries=retries,
+        )
+
+    def wait_for_text_to_be_present(self, locator=None, text=None, timeout=10, retries=None):
+        """Wait for element text to be changed"""
+        logger = self._logger("wait for text to be present")
+
+        resolved = self._resolve_locator(locator)
+
+        def wait_callable():
+            logger.info("Waiting for text to be present", element=self._locator_repr(locator))
+            WebDriverWait(self.driver, timeout).until(
+                EC.text_to_be_present_in_element(resolved, text)
+            )
+            return True
+
+        return self._wait_with_retry(
+            "wait_for_text_to_be_present",
+            locator,
+            wait_callable,
+            "text_is_not_displayed",
+            retries=retries,
+        )
+
+    def click_element(self, locator, timeout=10):
+        """Waits for element to be clickable and clicks element"""
+        logger = self._logger("click_element")
+        self.wait_for_element_clickable(locator, timeout=timeout)
+        logger.info("Clicking element", element=self._locator_repr(locator))
+        self.driver.find_element(*self._resolve_locator(locator)).click()
+        logger.info("Element clicked", element=self._locator_repr(locator))
+
+    def click_element_and_hold(self, locator, timeout=10):
+        """Waits for element to be clickable and clicks element"""
+        logger = self._logger("click_element")
+        # self.wait_for_element_clickable(locator, timeout=timeout)
+        logger.info("Clicking element", element=self._locator_repr(locator))
+        self.driver.find_element(*self._resolve_locator(locator)).click()
+        logger.info("Element clicked", element=self._locator_repr(locator))
+
+    def send_keys_to_element(
+        self, locator, text, timeout=10, submit=False, sensitive=False
+    ):
+        """Waits for element to be clickable and clicks element"""
+        logger = self._logger("click_element")
+        self.wait_for_element_present(locator, timeout=timeout)
+        if not sensitive:
+            logger.info(
+                f"Sending keys {text} to element",
+                element=self._locator_repr(locator),
+            )
+        self.driver.find_element(*self._resolve_locator(locator)).send_keys(text)
+        if not sensitive:
+            logger.info(
+                f"Sent {text} to element",
+                element=self._locator_repr(locator),
+            )
+        if submit is True:
+            self.driver.find_element(*self._resolve_locator(locator)).submit()
+
+    def get_text_from_element(self, locator, timeout=10):
+        logger = self._logger("get_text")
+        self.wait_for_element_present(locator, timeout=timeout)
+        text = self.driver.find_element(*self._resolve_locator(locator)).text
+        logger.info(
+            f"Getting {text} as text from element",
+            element=self._locator_repr(locator),
+        )
+        return text
+
+    def get_attribute_value(self, locator, timeout=10):
+        logger = self._logger("get_text")
+        self.wait_for_element_present(locator, timeout=timeout)
+        text = (
+            self.driver.find_element(*self._resolve_locator(locator))
+        ).get_attribute("value")
+        logger.info(
+            f"Getting {text} as text from element",
+            element=self._locator_repr(locator),
+        )
+        return text
+
+    def get_attribute_size(self, locator, timeout=10):
+        logger = self._logger("get_size")
+        self.wait_for_element_present(locator, timeout=timeout)
+        width = self.driver.find_element(*self._resolve_locator(locator)).size.get(
+            "width"
+        )
+        logger.info(
+            f"Getting {width} as width for the element",
+            element=self._locator_repr(locator),
+        )
+        return width
+
+    def clear_element_text(self, locator, timeout=10):
+        """Waits for element to be present and clear"""
+        logger = self._logger("clear_text")
+        self.wait_for_element_present(locator, timeout=timeout)
+        resolved = self._resolve_locator(locator)
+        self.driver.find_element(*resolved).click()
+        text = (self.driver.find_element(*resolved)).get_attribute("value")
+        if text != "":
+            i = 0
+            while i <= len(text):
+                self.driver.find_element(*resolved).send_keys(Keys.BACK_SPACE)
+                i += 1
+        logger.info(
+            f"Setting {' '} as text from element",
+            element=self._locator_repr(locator),
+        )
+
+    def is_element_enabled(self, locator=None, element=None):
+        """
+        NEW METHOD
+        Check if element is enabled
+        Either provide element or a combination of locator and locatorType
+        """
+        is_enabled = False
+        logger = self._logger("get_pipeline_info")
+        try:
+            if locator:  # This means if locator is not empty
+                element = self.driver.find_element(*self._resolve_locator(locator))
+            if element is not None:
+                is_enabled = element.is_enabled()
+                logger.info("Element is enabled", element=element)
+            else:
+                logger.info("Element not enabled", element=element)
+            return is_enabled
+        except Exception as error:
+            logger.warning("Element not found", locator=self._locator_repr(locator), error=str(error))
+            return False
+
+    def quit_driver(self):
+        self.driver.quit()
+
+    def generate_screenshot(self, error_file_name):
+        """Method: generate_screenshot
+        :type error_file_name: string
+        :param error_file_name: this is the file name
+        """
+        screenshot_name = f"{error_file_name}_{self.get_date_time()}.png"
+        screenshot_path = capture_screenshot(self.driver, screenshot_name)
+        self._logger("generate_screenshot").info(
+            "Generated screenshot", screenshot=str(screenshot_path)
+        )
+        return screenshot_path
+
+
+# Backwards-compatible alias for clearer naming.
+SeleniumBasePage = BaseFactory

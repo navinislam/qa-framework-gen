@@ -188,6 +188,53 @@ qfg add-test login
 qfg add-test users --type api
 ```
 
+### `qfg add-locators`
+
+Add optional locator model support for centralized selector management (Selenium projects only).
+
+**What it does:**
+- Creates `framework/models/locator.py` with a `Locator` dataclass for type-safe selectors
+- Generates `pages/locators.py` with example locator definitions
+- Provides strongly-typed alternative to inline tuple locators
+
+**When to use:**
+- You prefer centralized selector management over inline tuples
+- You want IDE autocomplete and type safety for locators
+- You have many page objects sharing similar selectors
+- You value refactoring safety (rename in one place)
+
+**When NOT to use:**
+- Playwright-only projects (Playwright uses simple string selectors)
+- Small projects where inline tuples are simpler
+- Teams that prefer minimal abstraction
+
+**Example:**
+```bash
+cd my-tests
+qfg add-locators
+```
+
+**Usage after adding:**
+```python
+# pages/locators.py
+from selenium.webdriver.common.by import By
+from framework.models.locator import Locator
+
+class LoginPageLocators:
+    USERNAME = Locator(By.ID, "username")
+    PASSWORD = Locator(By.ID, "password")
+    LOGIN_BUTTON = Locator(By.ID, "login-button")
+
+# pages/login_page.py
+from pages.locators import LoginPageLocators
+
+class LoginPage(BasePage):
+    def login(self, username: str, password: str):
+        self.send_keys_to_element(LoginPageLocators.USERNAME.as_tuple(), username)
+        self.send_keys_to_element(LoginPageLocators.PASSWORD.as_tuple(), password)
+        self.click_element(LoginPageLocators.LOGIN_BUTTON.as_tuple())
+```
+
 ## Project Structure
 
 ### Selenium Only
