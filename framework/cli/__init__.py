@@ -212,6 +212,9 @@ def init(name: str, base_url: str, directory: Path, force: bool) -> None:
     (target_dir / "tests" / "data").mkdir(parents=True, exist_ok=True)
 
     # Create __init__.py files
+    # Root __init__.py for IDE/PyCharm code intelligence
+    (target_dir / "__init__.py").write_text('"""Test automation framework package."""\n')
+
     for pages_dir in ["pages", "pages_pw"]:
         if (target_dir / pages_dir).exists():
             (target_dir / pages_dir / "__init__.py").write_text("")
