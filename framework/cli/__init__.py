@@ -169,7 +169,8 @@ def init(name: str, base_url: str, directory: Path, force: bool) -> None:
     ).ask()
 
     # Create context for template rendering
-    project_slug = _slugify(name)
+    # Use package name (underscores) for directory to make it importable
+    project_slug = _package_name(name)
     target_dir = directory / project_slug
 
     # Check if directory exists
