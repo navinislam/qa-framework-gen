@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qa-framework-gen"
+version = "0.1.0"
+description = "CLI tool to generate pytest automation frameworks with Selenium and/or Playwright support."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Navin Islam" }
+]
+dependencies = [
+    "click>=8.1,<9",
+    "questionary>=2.0,<3",
+    "jinja2>=3.1,<4",
+    "pyyaml>=6.0,<7",
+    "structlog>=23.1,<25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=23.12.1",
+    "flake8>=7.0",
+    "flake8-docstrings>=1.7",
+    "flake8-bugbear>=23.12",
+    "flake8-comprehensions>=3.14",
+    "mypy>=1.8",
+    "bandit>=1.7.6",
+    "pre-commit>=3.6",
+    "pytest>=7.4,<9",
+]
+
+[project.urls]
+Homepage = "https://github.com/navinislam/qa-framework-gen"
+
+[project.scripts]
+qfg = "framework.cli:cli"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["framework*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "questionary.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "yaml.*"
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["/venv", "/.venv", "/tests"]
+skips = ["B101"]
